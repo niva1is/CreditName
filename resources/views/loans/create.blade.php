@@ -1,8 +1,8 @@
 {{-- resources/views/loans/create.blade.php --}}
 @extends('layouts.app')
 
-@section('title', auth()->user()->role === 'manager' ? 'Заявки на кредит' : 'Оформление кредита')
-@section('page_title', auth()->user()->role === 'manager' ? 'Заявки на кредит' : 'Оформление кредита')
+@section('title', (auth()->user()->role === 'manager' || auth()->user()->hasRole('manager')) ? 'Заявки на кредит' : 'Оформление кредита')
+@section('page_title', (auth()->user()->role === 'manager' || auth()->user()->hasRole('manager')) ? 'Заявки на кредит' : 'Оформление кредита')
 
 @section('content')
 <style>
@@ -405,7 +405,11 @@
     }
 </style>
 
-@if(auth()->user()->role === 'manager')
+@php
+    $isManager = (auth()->user()->role === 'manager' || auth()->user()->hasRole('manager'));
+@endphp
+
+@if($isManager)
     {{-- ==================== ИНТЕРФЕЙС СОТРУДНИКА ==================== --}}
     <div class="page-header">
         <div class="section-title">Заявки на кредит</div>
@@ -719,18 +723,28 @@
     // Обновление отображения ставки
     function updateRateDisplay() {
         const productSelect = document.getElementById('product_id');
-        const selectedOption = productSelect.options[productSelect.selectedIndex];
-        const rate = selectedOption.getAttribute('data-rate') || '16';
-        document.getElementById('rateDisplay').textContent = rate + '%';
-        calculatePayment();
+        if (productSelect) {
+            const selectedOption = productSelect.options[productSelect.selectedIndex];
+            const rate = selectedOption.getAttribute('data-rate') || '16';
+            const rateDisplay = document.getElementById('rateDisplay');
+            if (rateDisplay) rateDisplay.textContent = rate + '%';
+            calculatePayment();
+        }
     }
 
     // Расчёт платежа
     function calculatePayment() {
-        const amount = parseFloat(document.getElementById('amount').value) || 5000000;
-        const term = parseInt(document.getElementById('term_months').value) || 24;
-        
+        const amountInput = document.getElementById('amount');
+        const termSelect = document.getElementById('term_months');
         const productSelect = document.getElementById('product_id');
+        const calcResult = document.getElementById('calcResult');
+        const rateDisplay = document.getElementById('rateDisplay');
+        
+        if (!amountInput || !termSelect || !productSelect || !calcResult) return;
+        
+        const amount = parseFloat(amountInput.value) || 5000000;
+        const term = parseInt(termSelect.value) || 24;
+        
         const selectedOption = productSelect.options[productSelect.selectedIndex];
         const rate = parseFloat(selectedOption.getAttribute('data-rate')) || 16;
         
@@ -744,15 +758,16 @@
                            (Math.pow(1 + monthlyRate, term) - 1);
         }
         
-        document.getElementById('calcResult').textContent = 
-            new Intl.NumberFormat('ru-RU').format(Math.round(monthlyPayment)) + ' ₽/мес';
-        document.getElementById('rateDisplay').textContent = rate + '%';
+        calcResult.textContent = new Intl.NumberFormat('ru-RU').format(Math.round(monthlyPayment)) + ' ₽/мес';
+        if (rateDisplay) rateDisplay.textContent = rate + '%';
     }
 
     // Управление списком файлов
     function updateFileList() {
         const input = document.getElementById('documents');
         const fileList = document.getElementById('fileList');
+        if (!input || !fileList) return;
+        
         fileList.innerHTML = '';
         
         for (let i = 0; i < input.files.length; i++) {
@@ -773,6 +788,8 @@
 
     function removeFile(index) {
         const input = document.getElementById('documents');
+        if (!input) return;
+        
         const dt = new DataTransfer();
         
         for (let i = 0; i < input.files.length; i++) {
@@ -785,15 +802,14 @@
         updateFileList();
     }
 
-    // Инициализация для клиента
-    if (document.getElementById('product_id')) {
-        updateRateDisplay();
-        calculatePayment();
-    }
-
     // ========== ФУНКЦИИ ДЛЯ СОТРУДНИКА ==========
     
-    // Данные заявок (в реальном проекте загружаются через AJAX)
+    @php
+        $isManager = (auth()->user()->role === 'manager' || auth()->user()->hasRole('manager'));
+    @endphp
+
+    @if($isManager)
+    // Данные заявок
     const applicationsData = @json($loanApplications->keyBy('id'));
     
     function openApplicationModal(appId) {
@@ -863,9 +879,21 @@
     }
     
     // Закрытие по клику вне модального окна
-    document.getElementById('applicationModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeApplicationModal();
+    const modal = document.getElementById('applicationModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeApplicationModal();
+            }
+        });
+    }
+    @endif
+
+    // Инициализация для клиента
+    document.addEventListener('DOMContentLoaded', function() {
+        if (document.getElementById('product_id')) {
+            updateRateDisplay();
+            calculatePayment();
         }
     });
 </script>

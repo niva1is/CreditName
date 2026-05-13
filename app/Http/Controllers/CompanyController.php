@@ -6,28 +6,38 @@ use App\Models\Client;
 use Illuminate\Http\Request;
 use App\Models\RegistrationDocument;
 use Illuminate\Support\Facades\Storage;
+use App\Models\LoanApplication;
+use App\Models\CreditProduct;
 
 class CompanyController extends Controller
 {
-    public function index(Request $request)
+    public function index()
     {
-        $query = Client::query()->with('user');
+        // Получаем компании (клиентов) с пагинацией
+        $clients = Client::orderBy('short_name')->paginate(15);
         
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('short_name', 'like', "%{$search}%")
-                  ->orWhere('full_name', 'like', "%{$search}%")
-                  ->orWhere('inn', 'like', "%{$search}%");
-            });
-        }
+        // Статистика по кредитным продуктам
+        $productStats = CreditProduct::withCount(['loanApplications as loans_count' => function($query) {
+                $query->where('status', 'approved');
+            }])
+            ->withSum(['loanApplications as total_amount' => function($query) {
+                $query->where('status', 'approved');
+            }], 'amount')
+            ->get();
         
-        if ($request->filled('ownership')) {
-            $query->where('ownership_form', $request->ownership);
-        }
+        // Общая статистика для KPI
+        $totalPortfolio = LoanApplication::where('status', 'approved')->sum('amount');
+        $totalLoans = LoanApplication::where('status', 'approved')->count();  // <-- ЭТА ПЕРЕМЕННАЯ БЫЛА ОТСУТСТВУЕТ
+        $activeClients = Client::where('status', 'active')->count();
         
-        $clients = $query->orderBy('short_name')->paginate(15);
-        return view('companies.index', compact('clients'));
+        // Передаём все переменные в представление
+        return view('companies.index', compact(
+            'clients', 
+            'productStats', 
+            'totalPortfolio', 
+            'totalLoans',        // <-- ДОБАВЬТЕ ЭТО
+            'activeClients'
+        ));
     }
 
     public function show(Client $client)
