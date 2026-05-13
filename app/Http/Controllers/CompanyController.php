@@ -11,32 +11,55 @@ use App\Models\CreditProduct;
 
 class CompanyController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        // Получаем компании (клиентов) с пагинацией
-        $clients = Client::orderBy('short_name')->paginate(15);
-        
-        // Статистика по кредитным продуктам
-        $productStats = CreditProduct::withCount(['loanApplications as loans_count' => function($query) {
-                $query->where('status', 'approved');
-            }])
-            ->withSum(['loanApplications as total_amount' => function($query) {
-                $query->where('status', 'approved');
-            }], 'amount')
+        // Клиенты
+        $query = Client::query();
+
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function($q) use ($search) {
+                $q->where('short_name', 'like', "%{$search}%")
+                ->orWhere('full_name', 'like', "%{$search}%")
+                ->orWhere('inn', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->filled('ownership')) {
+            $query->where('ownership_form', $request->ownership);
+        }
+
+        $clients = $query->orderBy('short_name')->paginate(15);
+
+        // KPI
+        $totalPortfolio = LoanApplication::where('status', 'approved')->sum('amount') ?? 0;
+        $totalLoans     = LoanApplication::where('status', 'approved')->count();
+        $activeClients  = Client::where('status', 'active')->count();
+
+        // Статистика по продуктам
+        $productStats = CreditProduct::withCount([
+                'loanApplications as loans_count' => fn($q) => $q->where('status', 'approved')
+            ])
+            ->withSum([
+                'loanApplications as total_amount' => fn($q) => $q->where('status', 'approved')
+            ], 'amount')
             ->get();
-        
-        // Общая статистика для KPI
-        $totalPortfolio = LoanApplication::where('status', 'approved')->sum('amount');
-        $totalLoans = LoanApplication::where('status', 'approved')->count();  // <-- ЭТА ПЕРЕМЕННАЯ БЫЛА ОТСУТСТВУЕТ
-        $activeClients = Client::where('status', 'active')->count();
-        
-        // Передаём все переменные в представление
+
+        // Данные для графика (по месяцам)
+        $monthlyData = LoanApplication::selectRaw('MONTH(created_at) as month, SUM(amount) as total')
+            ->where('status', 'approved')
+            ->whereYear('created_at', date('Y'))
+            ->groupBy('month')
+            ->pluck('total', 'month')
+            ->toArray();
+
         return view('companies.index', compact(
-            'clients', 
-            'productStats', 
-            'totalPortfolio', 
-            'totalLoans',        // <-- ДОБАВЬТЕ ЭТО
-            'activeClients'
+            'clients',
+            'totalPortfolio',
+            'totalLoans',
+            'activeClients',
+            'productStats',
+            'monthlyData'
         ));
     }
 
