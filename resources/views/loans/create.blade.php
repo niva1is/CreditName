@@ -551,16 +551,25 @@
                     {{-- Выбор компании --}}
                     <div class="form-group form-group-full">
                         <label for="client_id">Компания</label>
-                        <select name="client_id" id="client_id" required>
-                            <option value="">— Выберите компанию —</option>
-                            @foreach($clients as $client)
-                                <option value="{{ $client->id }}" {{ auth()->user()->client_id == $client->id ? 'selected' : '' }}>
-                                    {{ $client->short_name }} ({{ $client->ownership_form }})
-                                </option>
-                            @endforeach
-                        </select>
+                        
+                        @php
+                            $myClient = \App\Models\Client::where('user_id', auth()->id())->first();
+                        @endphp
+                        
+                        @if($myClient)
+                            <input type="hidden" name="client_id" value="{{ $myClient->id }}">
+                            <input type="text" 
+                                value="{{ $myClient->short_name }} ({{ $myClient->ownership_form }})" 
+                                readonly 
+                                style="background: #F3F4F6; color: #374151; cursor: not-allowed;">
+                        @else
+                            <div style="padding: 12px; background: #FEF2F2; color: #991B1B; border-radius: 8px; font-size: 14px;">
+                                ⚠️ Ваша компания не найдена. Обратитесь к менеджеру банка.
+                            </div>
+                        @endif
+                        
                         @error('client_id')
-                            <div style="color: var(--danger); font-size: 12px; margin-top: 4px;">{{ $message }}</div>
+                            <div style="color: #DC2626; font-size: 12px; margin-top: 4px;">{{ $message }}</div>
                         @enderror
                     </div>
 

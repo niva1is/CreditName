@@ -41,26 +41,86 @@ class LoanController extends Controller
     }
 
     public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'client_id' => 'required|exists:clients,id',
-            'product_id' => 'required|exists:credit_products,id',
-            'amount' => 'required|numeric|min:100000|max:1000000000',
-            'issue_date' => 'required|date',
-        ]);
+{
+    $validated = $request->validate([
+        'client_id' => 'required|exists:clients,id',
+        'product_id' => 'required|exists:credit_products,id',
+        'amount' => 'required|numeric|min:100000|max:1000000000',
+        'issue_date' => 'required|date',
+    ]);
 
-        $loan = LoanApplication::create([
-            'client_id' => $validated['client_id'],
-            'credit_product_id' => $validated['product_id'],
-            'amount' => $validated['amount'],
-            'issue_date' => $validated['issue_date'],
+    $loan = LoanApplication::create([
+        'client_id' => $validated['client_id'],
+        'credit_product_id' => $validated['product_id'],
+        'amount' => $validated['amount'],
+        'issue_date' => $validated['issue_date'],
+        'status' => 'pending', // ← Меняем на pending (на одобрение)
+        'created_by' => auth()->id(),
+        // approved_by и approved_at пока NULL — менеджер заполнит при одобрении
+    ]);
+
+    return redirect()->route('loans.create')
+        ->with('success', 'Заявка на кредит отправлена на рассмотрение менеджеру.');
+}
+
+    /**
+     * Список заявок для менеджера
+     */
+    public function managerIndex(Request $request)
+    {
+        $query = LoanApplication::with(['client', 'creditProduct', 'creator']);
+        
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        
+        $loans = $query->orderBy('created_at', 'desc')->paginate(15);
+        
+        return view('manager.loans.index', compact('loans'));
+    }
+
+    /**
+     * Просмотр заявки менеджером
+     */
+    public function managerShow(LoanApplication $loan)
+    {
+        $loan->load(['client', 'creditProduct', 'creator', 'approver']);
+        return view('manager.loans.show', compact('loan'));
+    }
+
+    /**
+     * Одобрить заявку
+     */
+    public function approve(LoanApplication $loan)
+    {
+        $loan->update([
             'status' => 'issued',
-            'created_by' => auth()->id(),
             'approved_by' => auth()->id(),
             'approved_at' => now(),
         ]);
 
-        return redirect()->route('loans.create')
-            ->with('success', 'Кредит на сумму ' . number_format($validated['amount'], 0, ',', ' ') . ' ₽ успешно зарегистрирован.');
+        return redirect()->route('manager.loans.index')
+            ->with('success', 'Заявка #' . $loan->id . ' одобрена');
     }
+
+    /**
+     * Отклонить заявку
+     */
+    public function reject(Request $request, LoanApplication $loan)
+    {
+        $request->validate([
+            'rejection_reason' => 'required|string|min:10|max:500',
+        ]);
+
+        $loan->update([
+            'status' => 'rejected',
+            'notes' => $request->rejection_reason,
+            'approved_by' => auth()->id(),
+            'approved_at' => now(),
+        ]);
+
+        return redirect()->route('manager.loans.index')
+            ->with('success', 'Заявка #' . $loan->id . ' отклонена');
+    }
+
 }

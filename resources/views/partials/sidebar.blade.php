@@ -42,17 +42,17 @@
     </div>
 
     {{-- Управление — для сотрудников --}}
-    @if(auth()->check() && auth()->user()->hasAnyRole(['admin', 'credit_manager', 'supervisor']))
+    @if(auth()->check() && auth()->user()->hasAnyRole(['admin', 'credit_manager']))
     <div class="nav-section">
         <div class="nav-section__title">Управление</div>
         <ul class="nav">
             {{-- Заявки на кредит --}}
             <li>
-                <a href="{{ route('loans.create') }}" class="nav-link {{ request()->routeIs('loans.create') ? 'active' : '' }}">
-                    <span class="nav-link__icon">📝</span>
-                    <span class="nav-link__label">Заявки на кредит</span>
-                </a>
-            </li>
+            <a href="{{ route('manager.loans.index') }}" class="nav-link {{ request()->routeIs('manager.loans.*') ? 'active' : '' }}">
+                <span class="nav-link__icon">📝</span>
+                <span class="nav-link__label">Заявки на кредит</span>
+            </a>
+        </li>
             
             {{-- Компании --}}
             <li>

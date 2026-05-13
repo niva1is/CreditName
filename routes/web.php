@@ -35,8 +35,17 @@ Route::middleware(['auth'])->group(function () {
     // Реестр кредитов
     Route::get('/loans', [LoanController::class, 'index'])->name('loans.index');
 
+    // Управление заявками на кредит (менеджер)
+    Route::middleware('role:admin,credit_manager,supervisor')->prefix('manager/loans')->name('manager.loans.')->group(function () {
+        Route::get('/', [LoanController::class, 'managerIndex'])->name('index');
+        Route::get('/{loan}', [LoanController::class, 'managerShow'])->name('show');
+        Route::post('/{loan}/approve', [LoanController::class, 'approve'])->name('approve');
+        Route::post('/{loan}/reject', [LoanController::class, 'reject'])->name('reject');
+    });
+
+
     // Создание кредита
-    Route::middleware('role:admin,credit_manager,supervisor,client')->group(function () {
+    Route::middleware('role:admin,client')->group(function () {
         Route::get('/loans/create', [LoanController::class, 'create'])->name('loans.create');
         Route::post('/loans', [LoanController::class, 'store'])->name('loans.store');
     });
