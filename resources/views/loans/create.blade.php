@@ -544,7 +544,7 @@
             <div style="font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px;">Форма заявки</div>
             <div style="font-size: 22px; font-weight: 500; margin-bottom: 24px; color: var(--text-primary);">Данные кредита</div>
 
-            <form action="{{ route('loans.store') }}" method="POST" enctype="multipart/form-data">
+            <form action="{{ route('loans.store') }}" method="POST" enctype="multipart/form-data" id="creditForm">
                 @csrf
                 
                 <div class="form-grid">
@@ -584,22 +584,31 @@
                                 </option>
                             @endforeach
                         </select>
-                        @error('product_id')
-                            <div style="color: var(--danger); font-size: 12px; margin-top: 4px;">{{ $message }}</div>
-                        @enderror
                     </div>
-
-                    {{-- Сумма --}}
                     <div class="form-group">
-                        <label for="amount">Сумма кредита</label>
+                        <label for="amount">Сумма кредита <span class="required-mark">*</span></label>
                         <div class="field-inline">
-                            <input type="number" name="amount" id="amount" value="5000000" 
-                                   placeholder="Введите сумму" required min="500000" step="0.01"
-                                   oninput="calculatePayment()">
+                            <input type="number" 
+                                name="amount" 
+                                id="amount" 
+                                value="{{ old('amount', 5000000) }}" 
+                                placeholder="Введите сумму" 
+                                required 
+                                min="10000"          
+                                max="1000000000"        
+                                step="1000"          
+                                oninput="validateAmount(this)"
+                                onchange="calculatePayment()">
                             <span class="field-inline__suffix text-mono">₽</span>
                         </div>
-                        @error('amount')
-                            <div style="color: var(--danger); font-size: 12px; margin-top: 4px;">{{ $message }}</div>
+                        <div class="input-hint" style="font-size: 12px; color: #6B7280; margin-top: 6px;">
+                            Минимальная сумма: <strong>10 000 ₽</strong> Максимальная: <strong>1 000 000 000 ₽</strong>
+                        </div>
+                        <div id="amountError" style="color: #DC2626; font-size: 12px; margin-top: 4px; display: none;"></div>
+                        @error('amount') 
+                            <div class="error" style="color: #DC2626; font-size: 12px; margin-top: 4px;">
+                                ⚠️ {{ $message }}
+                            </div>
                         @enderror
                     </div>
 
@@ -639,12 +648,24 @@
                                placeholder="ФИО контактного лица" required>
                     </div>
 
-                    {{-- Телефон --}}
                     <div class="form-group">
-                        <label for="contact_phone">Телефон для связи</label>
-                        <input type="tel" name="contact_phone" id="contact_phone" 
-                               value="{{ auth()->user()->client->phone ?? '' }}"
-                               placeholder="+7 (___) ___-__-__" required>
+                        <label for="contact_phone">Телефон для связи <span class="required-mark">*</span></label>
+                        <input type="tel" 
+                            name="contact_phone" 
+                            id="contact_phone" 
+                            value="{{ old('contact_phone') }}" 
+                            placeholder="+7 (___) ___-__-__"
+                            required
+                            oninput="validatePhone(this)">
+                        <div class="input-hint" style="font-size: 12px; color: #6B7280; margin-top: 6px;">
+                            Формат: +7 (123) 456-78-90
+                        </div>
+                        <div id="phoneError" style="color: #DC2626; font-size: 12px; margin-top: 4px; display: none;"></div>
+                        @error('contact_phone') 
+                            <div class="error" style="color: #DC2626; font-size: 12px; margin-top: 4px;">
+                                ⚠️ {{ $message }}
+                            </div>
+                        @enderror
                     </div>
                 </div>
 
@@ -654,18 +675,15 @@
                         Документы для заявки
                     </label>
                     
-                    <div class="file-upload-area" onclick="document.getElementById('documents').click()">
+                    <div id="dropZone" class="file-upload-area" style="border: 2px dashed #CBD5E1; border-radius: 16px; padding: 32px; text-align: center; cursor: pointer; background: #FAFBFC;">
                         <div class="file-upload-area__icon">📄</div>
                         <div class="file-upload-area__text">Нажмите для загрузки или перетащите файлы</div>
-                        <div class="file-upload-area__hint">PDF, DOC, DOCX, XLS, XLSX, JPG, PNG до 10 МБ</div>
+                        <div class="file-upload-area__hint">PDF, DOC, DOCX, JPG, PNG до 10 МБ</div>
+                        
+                        <!-- СПИСОК ФАЙЛОВ ВНУТРИ ЗОНЫ ЗАГРУЗКИ -->
+                        <div id="fileList" class="file-list" style="margin-top: 16px;"></div>
                     </div>
-                    <input type="file" name="documents[]" id="documents" multiple 
-                           accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-                           style="display: none;" onchange="updateFileList()">
-                    
-                    <div class="file-list" id="fileList"></div>
                 </div>
-
                 {{-- Предварительный расчёт --}}
                 <div style="background: var(--bg-secondary); border-radius: var(--radius-md); padding: 20px; margin-top: 24px;">
                     <div style="font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px;">Предварительный расчёт</div>
@@ -727,9 +745,147 @@
 @endif
 
 <script>
-    // ========== ФУНКЦИИ ДЛЯ КЛИЕНТА ==========
-    
-    // Обновление отображения ставки
+    // ========== НАСТРОЙКИ ==========
+    const MIN_AMOUNT = 10000;
+    const MAX_AMOUNT = 1000000000;
+    let selectedFiles = [];
+
+    // ========== ВАЛИДАЦИЯ СУММЫ ==========
+    function validateAmount(input) {
+        let value = parseFloat(input.value);
+        const errorDiv = document.getElementById('amountError');
+        const calcResult = document.getElementById('calcResult');
+        
+        if (!errorDiv) return true;
+        
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+        input.style.borderColor = '';
+        
+        if (isNaN(value) || input.value === '') {
+            errorDiv.textContent = 'Введите сумму кредита';
+            errorDiv.style.display = 'block';
+            input.style.borderColor = '#DC2626';
+            if (calcResult) calcResult.textContent = '— ₽/мес';
+            return false;
+        }
+        
+        if (value < 0) {
+            errorDiv.textContent = 'Сумма не может быть отрицательной';
+            errorDiv.style.display = 'block';
+            input.style.borderColor = '#DC2626';
+            if (calcResult) calcResult.textContent = '— ₽/мес';
+            return false;
+        }
+        
+        if (value < MIN_AMOUNT) {
+            errorDiv.textContent = `Минимальная сумма: ${MIN_AMOUNT.toLocaleString('ru-RU')} ₽`;
+            errorDiv.style.display = 'block';
+            input.style.borderColor = '#DC2626';
+            if (calcResult) calcResult.textContent = '— ₽/мес';
+            return false;
+        }
+        
+        if (value > MAX_AMOUNT) {
+            errorDiv.textContent = `Максимальная сумма: ${MAX_AMOUNT.toLocaleString('ru-RU')} ₽`;
+            errorDiv.style.display = 'block';
+            input.style.borderColor = '#DC2626';
+            if (calcResult) calcResult.textContent = '— ₽/мес';
+            return false;
+        }
+        
+        input.style.borderColor = '#16A34A';
+        calculatePayment();
+        return true;
+    }
+
+    // ========== ВАЛИДАЦИЯ ТЕЛЕФОНА ==========
+    function validatePhone(input) {
+        let value = input.value;
+        const errorDiv = document.getElementById('phoneError');
+        
+        if (!errorDiv) return true;
+        
+        errorDiv.style.display = 'none';
+        errorDiv.textContent = '';
+        input.style.borderColor = '';
+        
+        let cleaned = value.replace(/\D/g, '');
+        
+        if (cleaned.length === 0) {
+            input.value = '';
+            return false;
+        }
+        
+        if (cleaned.startsWith('7') || cleaned.startsWith('8')) {
+            if (cleaned.startsWith('8')) {
+                cleaned = '7' + cleaned.substring(1);
+            }
+            
+            let formatted = '+7';
+            if (cleaned.length > 1) formatted += ' (' + cleaned.substring(1, 4);
+            if (cleaned.length > 4) formatted += ') ' + cleaned.substring(4, 7);
+            if (cleaned.length > 7) formatted += '-' + cleaned.substring(7, 9);
+            if (cleaned.length > 9) formatted += '-' + cleaned.substring(9, 11);
+            
+            input.value = formatted;
+        }
+        
+        const digits = input.value.replace(/\D/g, '');
+        const isValid = digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8'));
+        
+        if (!isValid && input.value.length > 0) {
+            errorDiv.textContent = 'Введите номер в формате +7 (123) 456-78-90';
+            errorDiv.style.display = 'block';
+            input.style.borderColor = '#DC2626';
+            return false;
+        } else if (isValid) {
+            input.style.borderColor = '#16A34A';
+        }
+        
+        return isValid;
+    }
+
+    // ========== ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ ==========
+    function validateFormBeforeSubmit(e) {
+        const amountInput = document.getElementById('amount');
+        const phoneInput = document.getElementById('contact_phone');
+        let isValid = true;
+        
+        if (amountInput && !validateAmount(amountInput)) {
+            isValid = false;
+        }
+        
+        if (phoneInput && phoneInput.value.length > 0) {
+            const digits = phoneInput.value.replace(/\D/g, '');
+            const isPhoneValid = digits.length === 11 && (digits.startsWith('7') || digits.startsWith('8'));
+            if (!isPhoneValid) {
+                validatePhone(phoneInput);
+                isValid = false;
+            }
+        } else if (phoneInput && phoneInput.value.length === 0) {
+            const errorDiv = document.getElementById('phoneError');
+            if (errorDiv) {
+                errorDiv.textContent = 'Введите номер телефона';
+                errorDiv.style.display = 'block';
+                phoneInput.style.borderColor = '#DC2626';
+            }
+            isValid = false;
+        }
+        
+        if (!isValid) {
+            e.preventDefault();
+            const firstError = document.querySelector('[style*="border-color: #DC2626"]');
+            if (firstError) {
+                firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+            return false;
+        }
+        
+        return true;
+    }
+
+    // ========== РАСЧЁТ ПЛАТЕЖА ==========
     function updateRateDisplay() {
         const productSelect = document.getElementById('product_id');
         if (productSelect) {
@@ -737,11 +893,14 @@
             const rate = selectedOption.getAttribute('data-rate') || '16';
             const rateDisplay = document.getElementById('rateDisplay');
             if (rateDisplay) rateDisplay.textContent = rate + '%';
-            calculatePayment();
+            
+            const amountInput = document.getElementById('amount');
+            if (amountInput && amountInput.style.borderColor === 'rgb(22, 163, 74)') {
+                calculatePayment();
+            }
         }
     }
 
-    // Расчёт платежа
     function calculatePayment() {
         const amountInput = document.getElementById('amount');
         const termSelect = document.getElementById('term_months');
@@ -751,8 +910,13 @@
         
         if (!amountInput || !termSelect || !productSelect || !calcResult) return;
         
-        const amount = parseFloat(amountInput.value) || 5000000;
+        let amount = parseFloat(amountInput.value);
         const term = parseInt(termSelect.value) || 24;
+        
+        if (isNaN(amount) || amount < MIN_AMOUNT || amount > MAX_AMOUNT) {
+            calcResult.textContent = '— ₽/мес';
+            return;
+        }
         
         const selectedOption = productSelect.options[productSelect.selectedIndex];
         const rate = parseFloat(selectedOption.getAttribute('data-rate')) || 16;
@@ -771,44 +935,161 @@
         if (rateDisplay) rateDisplay.textContent = rate + '%';
     }
 
-    // Управление списком файлов
-    function updateFileList() {
-        const input = document.getElementById('documents');
-        const fileList = document.getElementById('fileList');
-        if (!input || !fileList) return;
+    // ========== УПРАВЛЕНИЕ ФАЙЛАМИ (ИСПРАВЛЕНО) ==========
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function getFileIcon(type) {
+        if (type.includes('pdf')) return '📕';
+        if (type.includes('image')) return '🖼️';
+        if (type.includes('word') || type.includes('doc')) return '📝';
+        if (type.includes('sheet') || type.includes('xls')) return '📊';
+        return '📄';
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' МБ';
+        if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' КБ';
+        return bytes + ' Б';
+    }
+
+    function renderFileList() {
+        const container = document.getElementById('fileList');
+        if (!container) return;
         
-        fileList.innerHTML = '';
+        container.innerHTML = '';
         
-        for (let i = 0; i < input.files.length; i++) {
-            const file = input.files[i];
-            const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-            
+        if (selectedFiles.length === 0) return;
+        
+        selectedFiles.forEach((file, index) => {
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
-            fileItem.innerHTML = `
-                <span class="file-item__name">
-                    📎 ${file.name} (${sizeMB} МБ)
-                </span>
-                <span class="file-item__remove" onclick="removeFile(${i})">Удалить</span>
+            // 👇 ИСПРАВЛЕННЫЙ CSS - теперь с flex-wrap и переносом текста
+            fileItem.style.cssText = `
+                display: flex; 
+                align-items: center; 
+                justify-content: space-between; 
+                gap: 12px;
+                padding: 10px 14px; 
+                background: #F9FAFB; 
+                border-radius: 8px; 
+                margin-bottom: 8px; 
+                border: 1px solid #E5E7EB;
             `;
-            fileList.appendChild(fileItem);
+            
+            fileItem.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; overflow: hidden;">
+                    <span style="font-size: 20px; flex-shrink: 0;">${getFileIcon(file.type)}</span>
+                    <span style="font-size: 13px; font-weight: 500; word-break: break-all; overflow-wrap: break-word; flex: 1;">${escapeHtml(file.name)}</span>
+                    <span style="font-size: 11px; color: #6B7280; flex-shrink: 0;">${formatFileSize(file.size)}</span>
+                </div>
+                <button type="button" onclick="removeFile(${index})" style="background: none; border: none; color: #DC2626; cursor: pointer; font-size: 18px; flex-shrink: 0; padding: 4px 8px;">🗑️</button>
+            `;
+            container.appendChild(fileItem);
+        });
+    }
+
+    function addFiles(newFiles) {
+        if (selectedFiles.length + newFiles.length > 10) {
+            alert('Максимум 10 файлов!');
+            return;
         }
+        
+        for (let file of newFiles) {
+            if (file.size > 10485760) {
+                alert(`Файл "${file.name}" слишком большой (макс. 10 МБ)`);
+                return;
+            }
+            
+            if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+                alert(`Файл "${file.name}" уже добавлен`);
+                return;
+            }
+            
+            selectedFiles.push(file);
+        }
+        
+        renderFileList();
+        updateFileInput();
     }
 
     function removeFile(index) {
-        const input = document.getElementById('documents');
-        if (!input) return;
+        selectedFiles.splice(index, 1);
+        renderFileList();
+        updateFileInput();
         
-        const dt = new DataTransfer();
-        
-        for (let i = 0; i < input.files.length; i++) {
-            if (i !== index) {
-                dt.items.add(input.files[i]);
-            }
+        // Показываем зону загрузки если файлов нет
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone && selectedFiles.length === 0) {
+            dropZone.style.display = 'block';
+        }
+    }
+
+    function updateFileInput() {
+        let fileInput = document.getElementById('documents');
+        if (!fileInput) {
+            fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.name = 'documents[]';
+            fileInput.id = 'documents';
+            fileInput.multiple = true;
+            fileInput.style.display = 'none';
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files.length > 0) {
+                    addFiles(Array.from(e.target.files));
+                    e.target.value = '';
+                }
+            });
+            document.body.appendChild(fileInput);
         }
         
-        input.files = dt.files;
-        updateFileList();
+        const dt = new DataTransfer();
+        selectedFiles.forEach(file => {
+            dt.items.add(file);
+        });
+        fileInput.files = dt.files;
+    }
+
+    function initFileUpload() {
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) {
+            dropZone.onclick = () => {
+                const input = document.getElementById('documents');
+                if (input) input.click();
+            };
+            dropZone.ondragover = (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#3261EC';
+                dropZone.style.background = '#EDF6FF';
+            };
+            dropZone.ondragleave = (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#CBD5E1';
+                dropZone.style.background = '#FAFBFC';
+            };
+            dropZone.ondrop = (e) => {
+                e.preventDefault();
+                dropZone.style.borderColor = '#CBD5E1';
+                dropZone.style.background = '#FAFBFC';
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) {
+                    addFiles(files);
+                }
+            };
+        }
+        
+        updateFileInput();
+        
+        // Предотвращаем стандартное поведение
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
     }
 
     // ========== ФУНКЦИИ ДЛЯ СОТРУДНИКА ==========
@@ -818,7 +1099,6 @@
     @endphp
 
     @if($isManager)
-    // Данные заявок
     const applicationsData = @json($loanApplications->keyBy('id'));
     
     function openApplicationModal(appId) {
@@ -834,7 +1114,6 @@
         document.getElementById('modalRate').textContent = (app.credit_product?.base_rate || '—') + '%';
         document.getElementById('modalDate').textContent = new Date(app.created_at).toLocaleDateString('ru-RU');
         
-        // Статус
         let statusHtml = '';
         switch(app.status) {
             case 'pending': statusHtml = '<span class="chip chip-warning">На рассмотрении</span>'; break;
@@ -844,7 +1123,6 @@
         }
         document.getElementById('modalStatus').innerHTML = statusHtml;
         
-        // Расчёт платежа
         const rate = parseFloat(app.credit_product?.base_rate || 16);
         const monthlyRate = rate / 100 / 12;
         let monthlyPayment;
@@ -857,13 +1135,11 @@
         document.getElementById('modalPayment').textContent = 
             new Intl.NumberFormat('ru-RU').format(Math.round(monthlyPayment)) + ' ₽';
         
-        // Документы
         const docsHtml = app.documents?.length 
             ? app.documents.map(d => `<div>📎 ${d.original_name || 'Документ'}</div>`).join('')
             : 'Документы не приложены';
         document.getElementById('modalDocs').innerHTML = docsHtml;
         
-        // Кнопки действий
         const actionsDiv = document.getElementById('modalActions');
         actionsDiv.innerHTML = '';
         
@@ -887,7 +1163,6 @@
         document.getElementById('applicationModal').classList.remove('active');
     }
     
-    // Закрытие по клику вне модального окна
     const modal = document.getElementById('applicationModal');
     if (modal) {
         modal.addEventListener('click', function(e) {
@@ -898,11 +1173,36 @@
     }
     @endif
 
-    // Инициализация для клиента
+    // ========== ИНИЦИАЛИЗАЦИЯ ==========
     document.addEventListener('DOMContentLoaded', function() {
+        initFileUpload();
+        
         if (document.getElementById('product_id')) {
             updateRateDisplay();
-            calculatePayment();
+            const amountInput = document.getElementById('amount');
+            if (amountInput && amountInput.value && parseFloat(amountInput.value) >= MIN_AMOUNT) {
+                calculatePayment();
+            } else {
+                const calcResult = document.getElementById('calcResult');
+                if (calcResult) calcResult.textContent = '— ₽/мес';
+            }
+        }
+        
+        const amountInput = document.getElementById('amount');
+        if (amountInput) {
+            amountInput.addEventListener('input', function() { validateAmount(this); });
+            amountInput.addEventListener('blur', function() { validateAmount(this); });
+        }
+        
+        const phoneInput = document.getElementById('contact_phone');
+        if (phoneInput) {
+            phoneInput.addEventListener('input', function() { validatePhone(this); });
+            phoneInput.addEventListener('blur', function() { validatePhone(this); });
+        }
+        
+        const creditForm = document.getElementById('creditForm');
+        if (creditForm) {
+            creditForm.addEventListener('submit', validateFormBeforeSubmit);
         }
     });
 </script>

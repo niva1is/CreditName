@@ -51,8 +51,16 @@
                 </td>
             </tr>
             <tr>
+                <td style="padding: 10px 0; color: #606981;">Срок</td>
+                <td>{{ $loan->term_months ?? '—' }} месяцев</td>
+            </tr>
+            <tr>
                 <td style="padding: 10px 0; color: #606981;">Дата выдачи</td>
                 <td>{{ $loan->issue_date->format('d.m.Y') }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px 0; color: #606981;">Цель кредита</td>
+                <td>{{ $loan->purpose ?? '—' }}</td>
             </tr>
             <tr>
                 <td style="padding: 10px 0; color: #606981;">Создал</td>
@@ -88,11 +96,11 @@
             </tr>
             <tr>
                 <td style="padding: 10px 0; color: #606981;">Контактное лицо</td>
-                <td>{{ $loan->client->contact_person }}</td>
+                <td>{{ $loan->contact_person ?? $loan->client->contact_person }}</td>
             </tr>
             <tr>
                 <td style="padding: 10px 0; color: #606981;">Телефон</td>
-                <td>{{ $loan->client->phone }}</td>
+                <td>{{ $loan->contact_phone ?? $loan->client->phone }}</td>
             </tr>
             <tr>
                 <td style="padding: 10px 0; color: #606981;">Адрес</td>
@@ -103,6 +111,61 @@
         <p style="color: #9CA3AF;">Клиент не найден</p>
         @endif
     </div>
+</div>
+
+<div class="card" style="margin-top: 20px;">
+    <div class="card__title">📎 Документы к заявке</div>
+    <div class="divider"></div>
+    
+    @php
+        // Ищем документы, связанные с этой кредитной заявкой
+        $documents = \App\Models\RegistrationDocument::whereIn('registration_request_id', 
+            \App\Models\RegistrationRequest::where('request_type', 'loan_application')
+                ->where('existing_client_id', $loan->client_id)
+                ->pluck('id')
+        )->orderBy('created_at', 'desc')->get();
+    @endphp
+    
+    @if($documents->count() > 0)
+        <div class="table-wrapper">
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Название файла</th>
+                        <th>Размер</th>
+                        <th>Дата загрузки</th>
+                        <th>Действие</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($documents as $doc)
+                    <tr>
+                        <td style="word-break: break-all;">📄 {{ $doc->file_name }}</td>
+                        <td class="text-mono" style="white-space: nowrap;">{{ $doc->formatted_size }}</td>
+                        <td style="white-space: nowrap;">{{ $doc->created_at->format('d.m.Y H:i') }}</td>
+                        <td style="white-space: nowrap;">
+                            <a href="{{ route('manager.registrations.download-document', [
+                                'registration' => $doc->registration_request_id, 
+                                'document' => $doc
+                            ]) }}" 
+                               class="btn btn--ghost btn--sm" 
+                               target="_blank"
+                               style="padding: 6px 12px; font-size: 12px;">
+                                📥 Скачать
+                            </a>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    @else
+        <div style="text-align: center; padding: 40px; color: #9CA3AF;">
+            <div style="font-size: 48px; margin-bottom: 12px;">📂</div>
+            <p>Документы не приложены к заявке</p>
+            <p style="font-size: 13px;">Клиент не загрузил дополнительные документы</p>
+        </div>
+    @endif
 </div>
 
 <!-- Кнопки действий (только для pending) -->
@@ -162,4 +225,33 @@
     </div>
 </div>
 @endif
+
+<style>
+    .table-wrapper {
+        overflow-x: auto;
+    }
+    .table-wrapper table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .table-wrapper th {
+        text-align: left;
+        padding: 12px 0;
+        font-size: 12px;
+        font-weight: 600;
+        color: #6B7280;
+        border-bottom: 1px solid #E5E7EB;
+    }
+    .table-wrapper td {
+        padding: 12px 0;
+        border-bottom: 1px solid #F3F4F6;
+    }
+    .table-wrapper tr:last-child td {
+        border-bottom: none;
+    }
+    .btn--sm {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+</style>
 @endsection

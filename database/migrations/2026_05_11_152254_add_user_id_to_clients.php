@@ -8,18 +8,28 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('clients', function (Blueprint $table) {
-            if (!Schema::hasColumn('clients', 'user_id')) {
-                $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
-            }
+        Schema::create('loan_applications', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('client_id')->constrained()->onDelete('cascade');
+            $table->foreignId('credit_product_id')->constrained()->onDelete('cascade');
+            $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
+            $table->foreignId('approved_by')->nullable()->constrained('users')->onDelete('set null');
+            $table->decimal('amount', 15, 2);
+            $table->integer('term_months')->default(12);
+            $table->date('issue_date');
+            $table->text('purpose');
+            $table->string('contact_person');
+            $table->string('contact_phone');
+            $table->enum('status', ['pending', 'approved', 'issued', 'rejected'])->default('pending');
+            $table->text('notes')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->timestamps();
+            $table->softDeletes();
         });
     }
 
     public function down(): void
     {
-        Schema::table('clients', function (Blueprint $table) {
-            $table->dropForeign(['user_id']);
-            $table->dropColumn('user_id');
-        });
+        Schema::dropIfExists('loan_applications');
     }
 };

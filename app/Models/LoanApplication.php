@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Validation\ValidationException;
 
 class LoanApplication extends Model
 {
@@ -16,7 +17,11 @@ class LoanApplication extends Model
         'created_by',
         'approved_by',
         'amount',
+        'term_months',        
         'issue_date',
+        'purpose',            
+        'contact_person',     
+        'contact_phone',      
         'status',
         'notes',
         'approved_at'
@@ -27,6 +32,18 @@ class LoanApplication extends Model
         'issue_date' => 'date',
         'approved_at' => 'datetime',
     ];
+
+    public function documents()
+    {
+        return $this->hasManyThrough(
+            RegistrationDocument::class,
+            RegistrationRequest::class,
+            'existing_client_id',  // Внешний ключ в registration_requests
+            'registration_request_id',  // Внешний ключ в registration_documents
+            'client_id',  // Локальный ключ в loan_applications
+            'id'  // Локальный ключ в registration_requests
+        );
+    }
 
     public function client()
     {
@@ -47,4 +64,5 @@ class LoanApplication extends Model
     {
         return $this->belongsTo(User::class, 'approved_by');
     }
+
 }
