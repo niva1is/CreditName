@@ -8,7 +8,7 @@ use App\Models\RegistrationDocument;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-class RegistrationController extends Controller
+class RegistrationController extends Controller 
 {
     /**
      * Список заявок
@@ -73,25 +73,17 @@ class RegistrationController extends Controller
      */
     public function downloadDocument(RegistrationRequest $registration, RegistrationDocument $document)
     {
-        // Проверяем, что документ принадлежит этой заявке
         if ($document->registration_request_id !== $registration->id) {
             abort(403);
         }
 
-        // Проверяем существование файла
         if (!Storage::disk('private')->exists($document->file_path)) {
             abort(404, 'Файл не найден');
         }
 
-        // Отдаём файл с правильными заголовками
-        return response()->file(
-            Storage::disk('private')->path($document->file_path),
-            [
-                'Content-Type' => $document->mime_type,
-                'Content-Disposition' => 'inline; filename="' . $document->file_name . '"',
-                'X-Content-Type-Options' => 'nosniff',
-                'X-Frame-Options' => 'DENY',
-            ]
-        );
+        return Storage::disk('private')->download($document->file_path, $document->file_name, [
+            'Content-Type' => $document->mime_type,
+            'Content-Disposition' => 'inline; filename="' . $document->file_name . '"',
+        ]);
     }
 }

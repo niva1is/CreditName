@@ -189,7 +189,7 @@
             </div>
         @endif
 
-        <form action="{{ route('register.submit') }}" method="POST" id="registrationForm">
+        <form action="{{ route('register.submit') }}" method="POST" enctype="multipart/form-data" id="registrationForm">
             @csrf
             
             <!-- Данные компании -->
@@ -583,6 +583,174 @@
         </div>
     </div>
 
+    <script>
+        // ========== УПРОЩЁННАЯ СИСТЕМА ЗАГРУЗКИ ФАЙЛОВ ==========
+        let uploadedFiles = [];
+
+        function getFileIcon(type) {
+            if (type.includes('pdf')) return '📕';
+            if (type.includes('image')) return '🖼️';
+            if (type.includes('word') || type.includes('doc')) return '📝';
+            return '📄';
+        }
+
+        function formatSize(bytes) {
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(2) + ' МБ';
+            if (bytes >= 1024) return (bytes / 1024).toFixed(2) + ' КБ';
+            return bytes + ' Б';
+        }
+
+        function renderFiles() {
+            const container = document.getElementById('uploadedFiles');
+            container.innerHTML = '';
+            
+            uploadedFiles.forEach((file, index) => {
+                const div = document.createElement('div');
+                div.className = 'file-item';
+                div.innerHTML = `
+                    <span class="file-icon">${getFileIcon(file.type)}</span>
+                    <span class="file-name">${file.name}</span>
+                    <span class="file-size">${formatSize(file.size)}</span>
+                    <select name="document_types[]" class="doc-type-select" data-index="${index}" style="min-width: 180px; padding: 6px 10px; border: 1px solid #D1D5DB; border-radius: 8px;">
+                        <option value="">Выберите тип...</option>
+                        <option value="charter">Устав компании</option>
+                        <option value="inn_certificate">Свидетельство ИНН</option>
+                        <option value="ogrn_certificate">Свидетельство ОГРН</option>
+                        <option value="director_order">Приказ о назначении</option>
+                        <option value="ownership_certificate">Свидетельство собственности</option>
+                        <option value="power_of_attorney">Доверенность</option>
+                        <option value="other">Прочее</option>
+                    </select>
+                    <button type="button" class="remove-btn" onclick="removeFile(${index})">✕</button>
+                `;
+                container.appendChild(div);
+            });
+            
+            document.getElementById('dropZone').style.display = uploadedFiles.length >= 10 ? 'none' : 'block';
+            
+            // Обновляем скрытый input с файлами
+            updateFileInput();
+        }
+
+        function updateFileInput() {
+            // Создаём DataTransfer с текущими файлами
+            const dt = new DataTransfer();
+            uploadedFiles.forEach(file => {
+                dt.items.add(file);
+            });
+            
+            // Обновляем основной input
+            const fileInput = document.getElementById('fileInput');
+            fileInput.files = dt.files;
+        }
+
+        function handleFiles(files) {
+            if (uploadedFiles.length + files.length > 10) {
+                alert('Максимум 10 файлов!');
+                return;
+            }
+            
+            for (let file of files) {
+                if (file.size > 10485760) {
+                    alert('Файл ' + file.name + ' слишком большой (макс. 10 МБ)');
+                    continue;
+                }
+                uploadedFiles.push(file);
+            }
+            
+            renderFiles();
+        }
+
+        function removeFile(index) {
+            uploadedFiles.splice(index, 1);
+            renderFiles();
+        }
+
+        // Drag & Drop handlers
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('dropZone').classList.remove('drag-over');
+            
+            const files = Array.from(e.dataTransfer.files);
+            handleFiles(files);
+        }
+
+        // Предотвращаем стандартное поведение
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            });
+        });
+
+        // ========== ПРОВЕРКА ПАРОЛЕЙ ==========
+        const password = document.getElementById('password');
+        const passwordConfirm = document.getElementById('password_confirmation');
+        const passwordMatch = document.getElementById('passwordMatch');
+        
+        function checkPasswords() {
+            if (passwordConfirm.value && password.value !== passwordConfirm.value) {
+                passwordMatch.style.display = 'block';
+                passwordMatch.textContent = '❌ Пароли не совпадают';
+                passwordMatch.style.color = '#DC2626';
+            } else if (passwordConfirm.value && password.value === passwordConfirm.value) {
+                passwordMatch.style.display = 'block';
+                passwordMatch.style.color = '#16A34A';
+                passwordMatch.textContent = '✅ Пароли совпадают';
+            } else {
+                passwordMatch.style.display = 'none';
+            }
+        }
+        
+        password.addEventListener('input', checkPasswords);
+        passwordConfirm.addEventListener('input', checkPasswords);
+        
+        // ========== ПРОВЕРКА ПЕРЕД ОТПРАВКОЙ ==========
+        document.getElementById('registrationForm').addEventListener('submit', function(e) {
+            // Проверка чекбоксов
+            const agreePersonal = document.getElementById('agree_personal');
+            const agreeTerms = document.getElementById('agree_terms');
+            const agreePrivacy = document.getElementById('agree_privacy');
+            
+            if (!agreePersonal.checked || !agreeTerms.checked || !agreePrivacy.checked) {
+                e.preventDefault();
+                alert('Пожалуйста, примите все обязательные соглашения перед отправкой заявки.');
+                return false;
+            }
+            
+            // Проверка типов документов для загруженных файлов
+            const selects = document.querySelectorAll('.doc-type-select');
+            let hasEmptyType = false;
+            selects.forEach(select => {
+                if (!select.value) {
+                    hasEmptyType = true;
+                    select.style.borderColor = '#DC2626';
+                }
+            });
+            
+            if (hasEmptyType && uploadedFiles.length > 0) {
+                e.preventDefault();
+                alert('Пожалуйста, выберите тип документа для каждого загруженного файла.');
+                return false;
+            }
+            
+            console.log('Отправка формы с файлами:', uploadedFiles.length);
+        });
+    </script>
+
     <!-- 👇 СКРИПТ ДЛЯ ПРОВЕРКИ ПАРОЛЕЙ -->
     <script>
         // Проверка совпадения паролей
@@ -617,6 +785,8 @@
                 alert('Пожалуйста, примите все обязательные соглашения перед отправкой заявки.');
             }
         });
+
+
     </script>
     
 </body>

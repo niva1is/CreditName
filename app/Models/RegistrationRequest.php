@@ -36,6 +36,24 @@ class RegistrationRequest extends Model
         'approved_at' => 'datetime',
     ];
 
+
+    public static function rules()
+    {
+        return [
+            'company_full_name' => 'required|string|max:255',
+            'company_short_name' => 'required|string|max:255',
+            'inn' => 'required|string|size:12|unique:registration_requests,inn',
+            'ogrn' => 'required|string|size:13|unique:registration_requests,ogrn',
+            'ownership_form' => 'required|in:ООО,АО,ПАО,ЗАО',
+            'legal_address' => 'required|string|max:500',
+            'phone' => 'required|string|max:20',
+            'contact_person' => 'required|string|max:255',
+            'contact_email' => 'required|email|max:255',
+            'email' => 'required|email|unique:registration_requests,email|unique:users,email',
+            'password' => 'required|min:8|confirmed',
+        ];
+    }
+
     /**
      * Связь с документами
      */
